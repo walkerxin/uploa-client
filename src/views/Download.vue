@@ -290,8 +290,10 @@ const refreshFileList = async () => {
   loading.value = true
   try {
     const response = await getFileList()
+    console.log('File list response:', response)
+    console.log('Files from localStorage:', response.files)
     fileList.value = response.files || []
-    ElMessage.success('文件列表刷新成功')
+    ElMessage.success(`文件列表刷新成功 (共${fileList.value.length}个文件)`)
   } catch (error) {
     console.error('Get file list error:', error)
     ElMessage.error('获取文件列表失败')

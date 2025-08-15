@@ -23,15 +23,33 @@ export const uploadSmallFile = async (file, onProgress) => {
       }
     })
     
+    // 调试：打印API响应
+    console.log('Small file upload response:', response.data)
+    console.log('Response keys:', Object.keys(response.data || {}))
+    console.log('Full response object:', response)
+    
     // 保存上传成功的文件信息到本地存储
-    if (response.data && response.data.fileId) {
-      saveUploadedFile({
-        fileId: response.data.fileId,
-        fileName: file.name,
-        fileSize: file.size,
-        type: file.type,
-        uploadMethod: 'small'
-      })
+    if (response.data) {
+      // 根据API文档，fileId在response.data.data中
+      const fileId = response.data.data
+      
+      console.log('API response code:', response.data.code)
+      console.log('API response message:', response.data.message)
+      console.log('File ID from response.data.data:', fileId)
+      
+      if (response.data.code === 200 && fileId) {
+        saveUploadedFile({
+          fileId: fileId,
+          fileName: file.name,
+          fileSize: file.size,
+          type: file.type,
+          uploadMethod: 'small'
+        })
+      } else {
+        console.error('Upload failed or no fileId returned')
+        console.error('Response:', response.data)
+        throw new Error(`Upload failed: ${response.data.message || 'Unknown error'}`)
+      }
     }
     
     return response.data
@@ -123,14 +141,30 @@ export const mergeChunks = async (fileHash, fileName, totalChunks, fileSize) => 
       totalChunks
     })
     
+    // 调试：打印合并分片响应
+    console.log('Merge chunks response:', response.data)
+    console.log('Merge response code:', response.data.code)
+    console.log('Merge response message:', response.data.message)
+    
     // 保存大文件上传成功的信息到本地存储
-    if (response.data && response.data.fileId) {
-      saveUploadedFile({
-        fileId: response.data.fileId,
-        fileName: fileName,
-        fileSize: fileSize,
-        uploadMethod: 'chunk'
-      })
+    if (response.data) {
+      // 根据API文档，fileId在response.data.data中
+      const fileId = response.data.data
+      
+      console.log('File ID from merge response.data.data:', fileId)
+      
+      if (response.data.code === 200 && fileId) {
+        saveUploadedFile({
+          fileId: fileId,
+          fileName: fileName,
+          fileSize: fileSize,
+          uploadMethod: 'chunk'
+        })
+      } else {
+        console.error('Merge chunks failed or no fileId returned')
+        console.error('Merge response:', response.data)
+        throw new Error(`Merge failed: ${response.data.message || 'Unknown error'}`)
+      }
     }
     
     return response.data

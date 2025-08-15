@@ -25,6 +25,8 @@ export const getUploadedFiles = () => {
  */
 export const saveUploadedFile = (fileInfo) => {
   try {
+    console.log('Attempting to save file info:', fileInfo)
+    
     const files = getUploadedFiles()
     const newFile = {
       id: fileInfo.fileId || fileInfo.id,
@@ -36,19 +38,24 @@ export const saveUploadedFile = (fileInfo) => {
       ...fileInfo
     }
     
+    console.log('Processed file object:', newFile)
+    
     // 检查是否已存在
     const existingIndex = files.findIndex(f => f.id === newFile.id)
     if (existingIndex !== -1) {
       files[existingIndex] = newFile
+      console.log('Updated existing file at index:', existingIndex)
     } else {
       files.unshift(newFile) // 添加到开头
+      console.log('Added new file to list')
     }
     
     // 限制最多保存100个文件记录
     const limitedFiles = files.slice(0, 100)
     
     localStorage.setItem(STORAGE_KEY, JSON.stringify(limitedFiles))
-    console.log('File saved to localStorage:', newFile)
+    console.log('File saved to localStorage. Total files now:', limitedFiles.length)
+    console.log('Complete files array:', limitedFiles)
   } catch (error) {
     console.error('Failed to save uploaded file to localStorage:', error)
   }
@@ -107,4 +114,36 @@ export const getUploadStats = () => {
     smallFileUploads: files.filter(f => f.uploadMethod === 'small').length,
     chunkFileUploads: files.filter(f => f.uploadMethod === 'chunk').length
   }
+}
+
+/**
+ * 调试函数：在浏览器控制台查看localStorage内容
+ */
+export const debugLocalStorage = () => {
+  console.log('=== LocalStorage Debug Info ===')
+  console.log('Storage key:', STORAGE_KEY)
+  
+  const rawData = localStorage.getItem(STORAGE_KEY)
+  console.log('Raw localStorage data:', rawData)
+  
+  if (rawData) {
+    try {
+      const parsedData = JSON.parse(rawData)
+      console.log('Parsed data:', parsedData)
+      console.log('File count:', parsedData.length)
+    } catch (error) {
+      console.error('Failed to parse localStorage data:', error)
+    }
+  } else {
+    console.log('No data found in localStorage')
+  }
+  
+  const files = getUploadedFiles()
+  console.log('Files from getUploadedFiles():', files)
+  console.log('Stats:', getUploadStats())
+}
+
+// 将调试函数挂载到全局对象，方便在控制台调用
+if (typeof window !== 'undefined') {
+  window.debugHalomeStorage = debugLocalStorage
 } 
