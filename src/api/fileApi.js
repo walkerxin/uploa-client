@@ -78,12 +78,6 @@ export const checkFileExists = async (fileName, fileHash) => {
 }
 
 /**
- * 上传文件分片
- * @param {Object} chunkData 分片数据
- * @param {Function} onProgress 进度回调
- * @returns {Promise}
- */
-/**
  * 上传文件分片（支持断点续传）
  * @param {Object} chunkData 分片数据
  * @param {Function} onProgress 进度回调
@@ -95,25 +89,28 @@ export const uploadChunk = async (chunkData, onProgress) => {
     if (!chunkData.fileHash) {
       throw new Error('缺少文件MD5值，无法上传')
     }
-    
-    const formData = new FormData()
-    formData.append('file', new Blob([chunkData.chunk]), chunkData.fileName)
-    
-    const response = await apiClient.post('/addLargeFile', formData, {
+
+    // 直接发送分片二进制数据作为请求体（符合接口：Body 为 arraybuff）
+    const binaryBody = chunkData.chunk instanceof Blob ? chunkData.chunk : new Blob([chunkData.chunk])
+
+    const response = await apiClient.post('/addLargeFile', binaryBody, {
       headers: {
-        'Content-Type': 'multipart/form-data',
+        'Content-Type': 'application/octet-stream',
         'FileStartIndex': chunkData.startByte.toString(),
         'FileSize': chunkData.fileSize.toString(),
         'FileName': chunkData.fileName,
         'FileMd5': chunkData.fileHash,
-        'AuthToken': API_CONFIG.token,
-        ...(chunkData.isLastChunk ? { 'NotificationLink': '' } : {}) // 如果是最后一片可添加通知链接
+        'AuthToken': API_CONFIG.token
+        // 仅当明确提供异步通知链接时才添加
+        // ...(chunkData.notificationLink ? { 'NotificationLink': chunkData.notificationLink } : {})
       },
       onUploadProgress: (progressEvent) => {
-        const progress = Math.round(
-          ((Number(chunkData.startByte) + progressEvent.loaded) * 100) / chunkData.fileSize
-        )
-        onProgress?.(progress)
+        // 回调报告当前分片的进度(0-100)，供上层按“MD5 20% + 上传80%”计算总进度
+        const chunkTotal = Number(chunkData.endByte) - Number(chunkData.startByte)
+        const chunkProgress = chunkTotal > 0 
+          ? Math.round((progressEvent.loaded * 100) / chunkTotal) 
+          : 100
+        onProgress?.(chunkProgress)
       }
     })
 
@@ -126,7 +123,7 @@ export const uploadChunk = async (chunkData, onProgress) => {
     
     return {
       ...response.data,
-      // 计算已上传字节数
+      // 计算已上传字节数（优先使用服务端返回的 fileIndex）
       uploadedBytes: response.data.fileIndex ? parseInt(response.data.fileIndex) : chunkData.endByte
     }
   } catch (error) {

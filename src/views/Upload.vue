@@ -252,21 +252,25 @@ const startUpload = async (task) => {
   try {
     fileStore.updateUploadTask(task.id, { status: 'uploading' })
 
+    let result
     if (task.uploadMode === 'small') {
-      await uploadSmallFileHandler(task)
+      result = await uploadSmallFileHandler(task)
     } else {
-      await uploadChunkedFileHandler(task)
+      result = await uploadChunkedFileHandler(task)
     }
 
-    fileStore.updateUploadTask(task.id, { 
-      status: 'completed', 
-      progress: 100 
-    })
-    ElMessage.success(`文件 ${task.fileName} 上传完成`)
+    // 根据任务最终状态决定是否提示完成
+    const currentTask = fileStore.uploadList.find(t => t.id === task.id)
+    if (currentTask?.status === 'completed') {
+      ElMessage.success(`文件 ${task.fileName} 上传完成`)
+    } else if (currentTask?.status === 'paused') {
+      // 暂停时不做提示
+      return
+    }
   } catch (error) {
     console.error('Upload error:', error)
     fileStore.updateUploadTask(task.id, { status: 'error' })
-    ElMessage.error(`文件 ${task.fileName} 上传失败: ${error.message}`)
+    ElMessage.error(`文件 ${task.fileName} 上传失败: ${error.message}` )
   }
 }
 
@@ -277,68 +281,129 @@ const uploadSmallFileHandler = async (task) => {
   }
 
   const result = await uploadSmallFile(task.file, onProgress)
-  console.log('Small file upload result:', result)
+  // 小文件上传完成后，设置状态
+  fileStore.updateUploadTask(task.id, { status: 'completed', progress: 100 })
+  return result
 }
 
 // 分片上传处理
 const uploadChunkedFileHandler = async (task) => {
   try {
-    // 1. 如果没有文件MD5值，先计算MD5
+    // 如果没有fileHash，先计算MD5
     if (!task.fileHash) {
       fileStore.updateUploadTask(task.id, { status: 'hashing', progress: 0 })
+      
       const fileHash = await calculateFileHash(task.file, (progress) => {
+        // MD5计算占总进度的20%
         fileStore.updateUploadTask(task.id, { 
           status: 'hashing', 
-          progress: Math.floor(progress / 2) // 计算哈希占总进度的50%
+          progress: Math.floor(progress * 0.2) 
         })
       })
-      fileStore.updateUploadTask(task.id, { fileHash, status: 'uploading', progress: 50 })
-      task.fileHash = fileHash // 更新任务对象中的fileHash
+      
+      fileStore.updateUploadTask(task.id, { fileHash })
+      task.fileHash = fileHash // 同步更新本地任务对象
     }
+
+    fileStore.updateUploadTask(task.id, { status: 'uploading' })
+    const chunkSize = task.chunkSize * 1024 * 1024 // 转换为字节
+    let startIndex = task.uploadedBytes || 0 // 从已上传位置开始（断点续传）
+    const totalSize = task.file.size
     
-    // 2. 切片文件
-    const chunks = sliceFile(task.file, task.chunkSize)
-    let uploadedBytes = 0
-    
-    // 3. 上传所有分片
-    for (const chunk of chunks) {
-      // 跳过已上传的部分
-      if (chunk.startByte < uploadedBytes) continue
-      
-      const result = await uploadChunk({
-        ...chunk,
+    // 如果已经全部上传完成
+    if (startIndex >= totalSize) {
+      fileStore.updateUploadTask(task.id, { status: 'completed', progress: 100 })
+      return { status: 'completed' }
+    }
+
+    console.log(`开始上传文件 ${task.fileName}，从字节 ${startIndex} 开始，总大小 ${totalSize}`)
+
+    while (startIndex < totalSize) {
+      // 检查任务状态，如果被暂停则停止
+      const currentTask = fileStore.uploadList.find(t => t.id === task.id)
+      if (currentTask?.status === 'paused') {
+        console.log('上传已暂停')
+        return { status: 'paused' }
+      }
+
+      const endIndex = Math.min(startIndex + chunkSize, totalSize)
+      const chunk = task.file.slice(startIndex, endIndex) // 正确使用file.slice
+      const isLastChunk = endIndex >= totalSize
+
+      console.log(`上传切片: ${startIndex}-${endIndex}, 是否最后一片: ${isLastChunk}`)
+
+      const chunkData = {
+        chunk: chunk,
+        startByte: startIndex,
+        endByte: endIndex,
         fileName: task.fileName,
-        fileSize: task.fileSize,
-        fileHash: task.fileHash // 确保传递文件MD5值
-      }, (progress) => {
-        // 计算总进度：哈希计算50% + 上传50%
-        const totalProgress = 50 + Math.floor(progress / 2)
-        fileStore.updateUploadTask(task.id, { progress: totalProgress })
+        fileSize: totalSize,
+        fileHash: task.fileHash,
+        isLastChunk: isLastChunk
+      }
+
+      const response = await uploadChunk(chunkData, (chunkProgress) => {
+        // 计算总进度：MD5占20% + 当前上传进度占80%
+        const currentBytes = startIndex + (chunk.size * chunkProgress / 100)
+        const totalProgress = 20 + Math.floor((currentBytes / totalSize) * 80)
+        fileStore.updateUploadTask(task.id, { progress: Math.min(totalProgress, 100) })
       })
-      
-      // 更新已上传字节数
-      uploadedBytes = result.uploadedBytes
-      console.log(`已上传 ${uploadedBytes}/${task.fileSize} 字节`)
-      
-      // 如果是最后一片且包含文件ID
-      if (chunk.isLastChunk && result.id) {
+
+      console.log('切片上传响应:', response)
+
+      // 根据服务器返回的fileIndex更新下一个切片的起始位置
+      if (response.fileIndex !== undefined) {
+        const serverIndex = parseInt(response.fileIndex)
+        startIndex = serverIndex
+        fileStore.updateUploadTask(task.id, { uploadedBytes: serverIndex })
+        
+        console.log(`服务器返回fileIndex: ${serverIndex}，下一个切片从 ${startIndex} 开始`)
+      } else {
+        // 如果服务器没有返回fileIndex，按本地计算继续
+        startIndex = endIndex
+        fileStore.updateUploadTask(task.id, { uploadedBytes: endIndex })
+      }
+
+      // 更新进度
+      const uploadProgress = 20 + Math.floor((task.uploadedBytes || endIndex) / totalSize * 80)
+      fileStore.updateUploadTask(task.id, { progress: Math.min(uploadProgress, 100) })
+
+      // 如果是最后一片且上传成功，检查是否有文件ID返回
+      if (isLastChunk && response.id) {
+        console.log('大文件上传完成，文件ID:', response.id)
+        
         // 保存文件信息到本地存储
         saveUploadedFile({
-          fileId: result.id,
+          fileId: response.id,
           fileName: task.fileName,
           fileSize: task.fileSize,
+          type: task.file.type || 'application/octet-stream',
           uploadMethod: 'chunk'
         })
-        fileStore.updateUploadTask(task.id, { progress: 100, status: 'completed' })
+        
+        fileStore.updateUploadTask(task.id, { 
+          status: 'completed', 
+          progress: 100,
+          fileId: response.id 
+        })
+        return { status: 'completed', fileId: response.id }
       }
     }
+
+    // 如果循环结束但没有获得文件ID，标记为完成
+    const finalTask = fileStore.uploadList.find(t => t.id === task.id)
+    if ((finalTask?.uploadedBytes || 0) >= totalSize) {
+      fileStore.updateUploadTask(task.id, { status: 'completed', progress: 100 })
+      return { status: 'completed' }
+    }
+
+    return { status: 'partial' }
+
   } catch (error) {
-    console.error('大文件上传失败:', error)
+    console.error('分片上传失败:', error)
     fileStore.updateUploadTask(task.id, { 
       status: 'error', 
-      error: error.message,
-      // 保存已上传位置以便恢复
-      resumeByte: uploadedBytes 
+      error: error.message 
     })
     throw error
   }
