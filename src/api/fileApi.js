@@ -205,7 +205,7 @@ export const getFileList = async (params = {}) => {
  */
 export const downloadFile = async (fileId, fileName, onProgress) => {
   try {
-    const response = await apiClient.get(`/download/${fileId}`, {
+    const response = await apiClient.get(`/cat?id=${fileId}`, {
       responseType: 'blob',
       onDownloadProgress: (progressEvent) => {
         const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total)
@@ -241,7 +241,7 @@ export const downloadFile = async (fileId, fileName, onProgress) => {
  */
 export const downloadFileRange = async (fileId, fileName, startByte, endByte, onProgress) => {
   try {
-    const response = await apiClient.get(`/download/${fileId}`, {
+    const response = await apiClient.get(`/cat?id=${fileId}`, {
       headers: {
         'Range': `bytes=${startByte}-${endByte}`
       },

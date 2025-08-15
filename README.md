@@ -166,7 +166,7 @@ GET /files
 
 #### 下载文件
 ```http
-GET /download/<fileId>
+GET /cat?id=<fileId>
 ```
 
 ## 🎯 使用说明

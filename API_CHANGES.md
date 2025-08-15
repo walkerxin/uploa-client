@@ -41,7 +41,7 @@
 - **认证**: 所有请求都使用 `AuthToken`
 
 #### 文件下载
-- **端点**: `GET /download/{fileId}`
+- **端点**: `GET /cat?id={fileId}`
 - **认证**: `AuthToken: 1b1427d1c3a88c308a0e0b3d61cf337e`
 
 ## 📁 新增文件
