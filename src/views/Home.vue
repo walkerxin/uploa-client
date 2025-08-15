@@ -146,6 +146,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useFileStore } from '../stores/fileStore'
 import { formatFileSize, formatTime } from '../utils/fileUtils'
+import { getUploadStats, getUploadedFiles } from '../utils/localFileStorage'
 
 const fileStore = useFileStore()
 
@@ -206,12 +207,22 @@ const refreshActivity = () => {
 
 // 初始化数据
 onMounted(() => {
-  // 计算统计数据
-  uploadCount.value = fileStore.uploadList.length
+  // 从本地存储获取统计数据
+  const stats = getUploadStats()
+  uploadCount.value = stats.totalFiles
   downloadCount.value = fileStore.downloadList.length
+  totalSize.value = stats.totalSize
   
-  // 计算总大小（这里是示例数据）
-  totalSize.value = 10 * 1024 * 1024 * 1024 // 10GB
+  // 获取最近活动（从本地存储的文件中取最近几个）
+  const recentFiles = getUploadedFiles().slice(0, 5)
+  recentActivity.value = recentFiles.map(file => ({
+    id: file.id,
+    fileName: file.name,
+    type: 'upload',
+    size: file.size,
+    status: 'completed',
+    time: file.uploadTime
+  }))
 })
 </script>
 

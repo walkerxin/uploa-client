@@ -13,7 +13,7 @@ export const apiClient = axios.create({
   baseURL: API_CONFIG.baseURL,
   timeout: API_CONFIG.timeout,
   headers: {
-    'Authorization': `Bearer ${API_CONFIG.token}`,
+    'AuthToken': API_CONFIG.token,
     'Content-Type': 'application/json'
   }
 })

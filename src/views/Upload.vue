@@ -372,7 +372,7 @@ const uploadChunkedFileHandler = async (task) => {
   }
 
   // 5. 合并分片
-  await mergeChunks(fileHash, task.fileName, chunks.length)
+  await mergeChunks(fileHash, task.fileName, chunks.length, task.fileSize)
   fileStore.updateUploadTask(task.id, { progress: 100 })
 }
 

@@ -1,4 +1,5 @@
 import { apiClient, API_CONFIG } from './config.js'
+import { saveUploadedFile } from '../utils/localFileStorage.js'
 
 /**
  * 小文件直接上传
@@ -13,13 +14,26 @@ export const uploadSmallFile = async (file, onProgress) => {
   try {
     const response = await apiClient.post('/add', formData, {
       headers: {
-        'Content-Type': 'multipart/form-data'
+        'Content-Type': 'multipart/form-data',
+        'AuthToken': API_CONFIG.token // 确保使用正确的认证头
       },
       onUploadProgress: (progressEvent) => {
         const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total)
         onProgress?.(progress)
       }
     })
+    
+    // 保存上传成功的文件信息到本地存储
+    if (response.data && response.data.fileId) {
+      saveUploadedFile({
+        fileId: response.data.fileId,
+        fileName: file.name,
+        fileSize: file.size,
+        type: file.type,
+        uploadMethod: 'small'
+      })
+    }
+    
     return response.data
   } catch (error) {
     console.error('Small file upload error:', error)
@@ -79,7 +93,8 @@ export const uploadChunk = async (chunkData, onProgress) => {
   try {
     const response = await apiClient.post('/upload-chunk', formData, {
       headers: {
-        'Content-Type': 'multipart/form-data'
+        'Content-Type': 'multipart/form-data',
+        'AuthToken': API_CONFIG.token // 确保使用正确的认证头
       },
       onUploadProgress: (progressEvent) => {
         const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total)
@@ -100,13 +115,24 @@ export const uploadChunk = async (chunkData, onProgress) => {
  * @param {number} totalChunks 总分片数
  * @returns {Promise}
  */
-export const mergeChunks = async (fileHash, fileName, totalChunks) => {
+export const mergeChunks = async (fileHash, fileName, totalChunks, fileSize) => {
   try {
     const response = await apiClient.post('/merge-chunks', {
       fileHash,
       fileName,
       totalChunks
     })
+    
+    // 保存大文件上传成功的信息到本地存储
+    if (response.data && response.data.fileId) {
+      saveUploadedFile({
+        fileId: response.data.fileId,
+        fileName: fileName,
+        fileSize: fileSize,
+        uploadMethod: 'chunk'
+      })
+    }
+    
     return response.data
   } catch (error) {
     console.error('Merge chunks error:', error)
@@ -121,8 +147,15 @@ export const mergeChunks = async (fileHash, fileName, totalChunks) => {
  */
 export const getFileList = async (params = {}) => {
   try {
-    const response = await apiClient.get('/cat', { params })
-    return response.data
+    // 由于没有获取文件列表的API，从本地存储获取
+    const { getUploadedFiles } = await import('../utils/localFileStorage.js')
+    const files = getUploadedFiles()
+    
+    return {
+      files: files,
+      total: files.length,
+      success: true
+    }
   } catch (error) {
     console.error('Get file list error:', error)
     throw error
