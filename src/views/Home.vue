@@ -146,7 +146,6 @@
 import { ref, computed, onMounted } from 'vue'
 import { useFileStore } from '../stores/fileStore'
 import { formatFileSize, formatTime } from '../utils/fileUtils'
-import { Upload, Download, Refresh, FolderOpened } from '@element-plus/icons-vue'
 
 const fileStore = useFileStore()
 

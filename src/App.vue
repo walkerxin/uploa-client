@@ -1,5 +1,5 @@
 <script setup>
-import { CloudUpload, House, Upload, Download } from '@element-plus/icons-vue'
+// 使用字符串名称方式，无需导入
 </script>
 
 <template>
@@ -9,7 +9,7 @@ import { CloudUpload, House, Upload, Download } from '@element-plus/icons-vue'
       <el-header class="app-header">
         <div class="header-content">
           <h1 class="app-title">
-            <el-icon><CloudUpload /></el-icon>
+            <el-icon><Folder /></el-icon>
             文件上传下载客户端
           </h1>
           <nav class="app-nav">

@@ -199,13 +199,6 @@ import {
   validateFileType,
   validateFileSize
 } from '../utils/fileUtils'
-import {
-  Upload,
-  Document,
-  Picture,
-  VideoPlay,
-  Files
-} from '@element-plus/icons-vue'
 
 const fileStore = useFileStore()
 

@@ -248,17 +248,6 @@ import {
   isDocumentFile,
   isVideoFile
 } from '../utils/fileUtils'
-import {
-  Search,
-  Refresh,
-  Download,
-  View,
-  Document,
-  Picture,
-  VideoPlay,
-  Files,
-  Warning
-} from '@element-plus/icons-vue'
 
 const fileStore = useFileStore()
 
