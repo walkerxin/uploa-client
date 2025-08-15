@@ -76,7 +76,7 @@ export const API_CONFIG = {
   baseURL: 'https://api.halome.cc', // 修改为实际API地址
   token: '1b1427d1c3a88c308a0e0b3d61cf337e', // 您的API token
   timeout: 30000,
-  chunkSize: 2 * 1024 * 1024, // 2MB 分片大小
+  chunkSize: 5 * 1024 * 1024, // 5MB 分片大小
 }
 ```
 

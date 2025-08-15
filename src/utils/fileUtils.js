@@ -67,23 +67,25 @@ export const calculateFileHash = (file, onProgress) => {
 }
 
 /**
- * 将文件切分为分片
+ * 切片文件
  * @param {File} file 文件对象
- * @param {number} chunkSize 分片大小
+ * @param {number} [chunkSize=5*1024*1024] 分片大小(字节)
  * @returns {Array} 分片数组
  */
-export const sliceFile = (file, chunkSize = 2 * 1024 * 1024) => {
+export const sliceFile = (file, chunkSize = 5 * 1024 * 1024) => {
   const chunks = []
-  const totalChunks = Math.ceil(file.size / chunkSize)
+  let start = 0
+  let index = 0
   
-  for (let i = 0; i < totalChunks; i++) {
-    const start = i * chunkSize
+  while (start < file.size) {
     const end = Math.min(start + chunkSize, file.size)
     chunks.push({
-      index: i,
-      chunk: file.slice(start, end),
-      size: end - start
+      index: index++,
+      startByte: start,
+      endByte: end,
+      chunk: file.slice(start, end)
     })
+    start = end
   }
   
   return chunks

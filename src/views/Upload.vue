@@ -188,7 +188,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useFileStore } from '../stores/fileStore'
-import { uploadSmallFile, uploadChunk, mergeChunks, checkFileExists } from '../api/fileApi'
+import { uploadSmallFile, uploadChunk, checkFileStatus } from '../api/fileApi'
 import {
   formatFileSize,
   formatSpeed,
@@ -324,56 +324,50 @@ const uploadSmallFileHandler = async (task) => {
 
 // 分片上传处理
 const uploadChunkedFileHandler = async (task) => {
-  // 1. 计算文件hash
-  const fileHash = await calculateFileHash(task.file, (progress) => {
-    fileStore.updateUploadTask(task.id, { 
-      progress: Math.round(progress * 0.1), // hash计算占10%进度
-      status: 'uploading'
-    })
-  })
-
-  // 2. 检查文件是否已存在
   try {
-    const existsResult = await checkFileExists(task.fileName, fileHash)
-    if (existsResult.exists) {
-      fileStore.updateUploadTask(task.id, { progress: 100 })
-      return
+    // 1. 检查文件状态
+    const status = await checkFileStatus(task.fileHash, task.fileName, task.fileSize)
+    console.log('File upload status:', status)
+    
+    let uploadedBytes = status?.fileIndex ? parseInt(status.fileIndex) : 0
+    
+    // 2. 上传未完成的分片
+    const chunks = sliceFile(task.file)
+    for (const chunk of chunks) {
+      if (chunk.startByte >= uploadedBytes) {
+        const response = await uploadChunk({
+          ...chunk,
+          fileName: task.fileName,
+          fileSize: task.fileSize,
+          fileHash: task.fileHash
+        }, (progress) => {
+          fileStore.updateUploadTask(task.id, { progress })
+        })
+        
+        uploadedBytes = response.fileIndex ? parseInt(response.fileIndex) : chunk.endByte
+        console.log(`Uploaded ${uploadedBytes}/${task.fileSize} bytes`)
+      }
+    }
+    
+    // 3. 检查最终状态
+    const finalStatus = await checkFileStatus(task.fileHash, task.fileName, task.fileSize)
+    if (finalStatus?.id) {
+      // 保存文件信息到本地存储
+      saveUploadedFile({
+        fileId: finalStatus.id,
+        fileName: task.fileName,
+        fileSize: task.fileSize,
+        uploadMethod: 'chunk'
+      })
+      fileStore.updateUploadTask(task.id, { progress: 100, status: 'completed' })
+    } else {
+      throw new Error('Upload completed but no file ID returned')
     }
   } catch (error) {
-    console.log('File not exists, continue upload')
+    console.error('Chunked upload error:', error)
+    fileStore.updateUploadTask(task.id, { status: 'error', error: error.message })
+    throw error
   }
-
-  // 3. 切分文件
-  const chunks = sliceFile(task.file, task.chunkSize)
-  let uploadedChunks = 0
-
-  // 4. 上传分片
-  for (const chunkInfo of chunks) {
-    if (task.status === 'paused') {
-      throw new Error('Upload paused')
-    }
-
-    const chunkData = {
-      chunk: chunkInfo.chunk,
-      chunkIndex: chunkInfo.index,
-      fileHash,
-      fileName: task.fileName,
-      totalChunks: chunks.length
-    }
-
-    await uploadChunk(chunkData, (chunkProgress) => {
-      const totalProgress = Math.round(
-        10 + ((uploadedChunks + chunkProgress / 100) / chunks.length) * 80
-      )
-      fileStore.updateUploadTask(task.id, { progress: totalProgress })
-    })
-
-    uploadedChunks++
-  }
-
-  // 5. 合并分片
-  await mergeChunks(fileHash, task.fileName, chunks.length, task.fileSize)
-  fileStore.updateUploadTask(task.id, { progress: 100 })
 }
 
 // 暂停上传

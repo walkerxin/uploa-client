@@ -101,27 +101,53 @@ export const getUploadedChunks = async (fileHash) => {
  * @returns {Promise}
  */
 export const uploadChunk = async (chunkData, onProgress) => {
-  const formData = new FormData()
-  formData.append('chunk', chunkData.chunk)
-  formData.append('chunkIndex', chunkData.chunkIndex)
-  formData.append('fileHash', chunkData.fileHash)
-  formData.append('fileName', chunkData.fileName)
-  formData.append('totalChunks', chunkData.totalChunks)
-  
   try {
-    const response = await apiClient.post('/upload-chunk', formData, {
+    const formData = new FormData()
+    formData.append('file', new Blob([chunkData.chunk]), chunkData.fileName)
+    
+    const response = await apiClient.post('/addLargeFile', formData, {
       headers: {
-        'Content-Type': 'multipart/form-data'
-        // 认证头通过拦截器或代理自动添加
+        'Content-Type': 'multipart/form-data',
+        'FileStartIndex': chunkData.startByte.toString(),
+        'FileSize': chunkData.fileSize.toString(),
+        'FileName': chunkData.fileName,
+        'FileMd5': chunkData.fileHash,
       },
       onUploadProgress: (progressEvent) => {
-        const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+        const progress = Math.round(
+          ((Number(chunkData.startByte) + progressEvent.loaded) * 100) / chunkData.fileSize
+        )
         onProgress?.(progress)
+      }
+    })
+
+    console.log('Chunk upload response:', response.data)
+    return response.data
+  } catch (error) {
+    console.error('Upload chunk error:', error)
+    throw error
+  }
+}
+
+/**
+ * 检查文件上传状态
+ * @param {string} fileHash 文件hash
+ * @param {string} fileName 文件名
+ * @param {number} fileSize 文件大小
+ * @returns {Promise}
+ */
+export const checkFileStatus = async (fileHash, fileName, fileSize) => {
+  try {
+    const response = await apiClient.get('/addLargeFile', {
+      headers: {
+        'FileMd5': fileHash,
+        'FileName': fileName,
+        'FileSize': fileSize.toString(),
       }
     })
     return response.data
   } catch (error) {
-    console.error('Chunk upload error:', error)
+    console.error('Check file status error:', error)
     throw error
   }
 }
