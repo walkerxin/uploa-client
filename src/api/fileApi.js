@@ -78,24 +78,13 @@ export const checkFileExists = async (fileName, fileHash) => {
 }
 
 /**
- * 获取已上传的分片信息
- * @param {string} fileHash 文件hash
+ * 上传文件分片
+ * @param {Object} chunkData 分片数据
+ * @param {Function} onProgress 进度回调
  * @returns {Promise}
  */
-export const getUploadedChunks = async (fileHash) => {
-  try {
-    const response = await apiClient.get('/addLargeFile', {
-      params: { fileHash }
-    })
-    return response.data
-  } catch (error) {
-    console.error('Get uploaded chunks error:', error)
-    throw error
-  }
-}
-
 /**
- * 上传文件分片
+ * 上传文件分片（支持断点续传）
  * @param {Object} chunkData 分片数据
  * @param {Function} onProgress 进度回调
  * @returns {Promise}
@@ -112,6 +101,8 @@ export const uploadChunk = async (chunkData, onProgress) => {
         'FileSize': chunkData.fileSize.toString(),
         'FileName': chunkData.fileName,
         'FileMd5': chunkData.fileHash,
+        'AuthToken': API_CONFIG.token,
+        ...(chunkData.isLastChunk ? { 'NotificationLink': '' } : {}) // 如果是最后一片可添加通知链接
       },
       onUploadProgress: (progressEvent) => {
         const progress = Math.round(
@@ -121,33 +112,14 @@ export const uploadChunk = async (chunkData, onProgress) => {
       }
     })
 
-    console.log('Chunk upload response:', response.data)
-    return response.data
+    console.log('分片上传响应:', response.data)
+    return {
+      ...response.data,
+      // 计算已上传字节数
+      uploadedBytes: response.data.fileIndex ? parseInt(response.data.fileIndex) : chunkData.endByte
+    }
   } catch (error) {
-    console.error('Upload chunk error:', error)
-    throw error
-  }
-}
-
-/**
- * 检查文件上传状态
- * @param {string} fileHash 文件hash
- * @param {string} fileName 文件名
- * @param {number} fileSize 文件大小
- * @returns {Promise}
- */
-export const checkFileStatus = async (fileHash, fileName, fileSize) => {
-  try {
-    const response = await apiClient.get('/addLargeFile', {
-      headers: {
-        'FileMd5': fileHash,
-        'FileName': fileName,
-        'FileSize': fileSize.toString(),
-      }
-    })
-    return response.data
-  } catch (error) {
-    console.error('Check file status error:', error)
+    console.error('分片上传失败:', error)
     throw error
   }
 }

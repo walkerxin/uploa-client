@@ -113,14 +113,6 @@
             <span>下载列表 ({{ downloadList.length }})</span>
             <div class="header-actions">
               <el-button
-                type="warning"
-                size="small"
-                @click="pauseAllDownloads"
-                :disabled="!hasDownloadingTasks"
-              >
-                全部暂停
-              </el-button>
-              <el-button
                 type="danger"
                 size="small"
                 @click="clearCompletedDownloads"
@@ -171,36 +163,12 @@
 
             <div class="download-actions">
               <el-button
-                v-if="task.status === 'downloading'"
-                type="warning"
-                size="small"
-                @click="pauseDownload(task)"
-              >
-                暂停
-              </el-button>
-              <el-button
-                v-else-if="task.status === 'paused'"
-                type="primary"
-                size="small"
-                @click="resumeDownload(task)"
-              >
-                继续
-              </el-button>
-              <el-button
-                v-else-if="task.status === 'error'"
+                v-if="task.status === 'error'"
                 type="primary"
                 size="small"
                 @click="retryDownload(task)"
               >
                 重试
-              </el-button>
-              <el-button
-                type="danger"
-                size="small"
-                @click="removeDownload(task)"
-                :disabled="task.status === 'downloading'"
-              >
-                删除
               </el-button>
             </div>
           </div>

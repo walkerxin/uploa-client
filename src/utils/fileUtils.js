@@ -83,7 +83,8 @@ export const sliceFile = (file, chunkSize = 5 * 1024 * 1024) => {
       index: index++,
       startByte: start,
       endByte: end,
-      chunk: file.slice(start, end)
+      chunk: file.slice(start, end),
+      isLastChunk: end >= file.size // 标记是否为最后一片
     })
     start = end
   }

@@ -76,24 +76,6 @@
         <template #header>
           <div class="card-header">
             <span>上传列表 ({{ uploadList.length }})</span>
-            <div class="header-actions">
-              <el-button
-                type="primary"
-                size="small"
-                @click="startAllUploads"
-                :disabled="!hasWaitingTasks"
-              >
-                全部开始
-              </el-button>
-              <el-button
-                type="warning"
-                size="small"
-                @click="pauseAllUploads"
-                :disabled="!hasUploadingTasks"
-              >
-                全部暂停
-              </el-button>
-            </div>
           </div>
         </template>
 
@@ -145,36 +127,12 @@
                 开始
               </el-button>
               <el-button
-                v-else-if="task.status === 'uploading'"
-                type="warning"
-                size="small"
-                @click="pauseUpload(task)"
-              >
-                暂停
-              </el-button>
-              <el-button
-                v-else-if="task.status === 'paused'"
-                type="primary"
-                size="small"
-                @click="resumeUpload(task)"
-              >
-                继续
-              </el-button>
-              <el-button
                 v-else-if="task.status === 'error'"
                 type="primary"
                 size="small"
                 @click="retryUpload(task)"
               >
                 重试
-              </el-button>
-              <el-button
-                type="danger"
-                size="small"
-                @click="removeUpload(task)"
-                :disabled="task.status === 'uploading'"
-              >
-                删除
               </el-button>
             </div>
           </div>
@@ -188,7 +146,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useFileStore } from '../stores/fileStore'
-import { uploadSmallFile, uploadChunk, checkFileStatus } from '../api/fileApi'
+import { uploadSmallFile, uploadChunk } from '../api/fileApi'
 import {
   formatFileSize,
   formatSpeed,
@@ -325,47 +283,48 @@ const uploadSmallFileHandler = async (task) => {
 // 分片上传处理
 const uploadChunkedFileHandler = async (task) => {
   try {
-    // 1. 检查文件状态
-    const status = await checkFileStatus(task.fileHash, task.fileName, task.fileSize)
-    console.log('File upload status:', status)
-    
-    let uploadedBytes = status?.fileIndex ? parseInt(status.fileIndex) : 0
-    
-    // 2. 上传未完成的分片
+    // 1. 切片文件
     const chunks = sliceFile(task.file)
-    for (const chunk of chunks) {
-      if (chunk.startByte >= uploadedBytes) {
-        const response = await uploadChunk({
-          ...chunk,
-          fileName: task.fileName,
-          fileSize: task.fileSize,
-          fileHash: task.fileHash
-        }, (progress) => {
-          fileStore.updateUploadTask(task.id, { progress })
-        })
-        
-        uploadedBytes = response.fileIndex ? parseInt(response.fileIndex) : chunk.endByte
-        console.log(`Uploaded ${uploadedBytes}/${task.fileSize} bytes`)
-      }
-    }
+    let uploadedBytes = 0
     
-    // 3. 检查最终状态
-    const finalStatus = await checkFileStatus(task.fileHash, task.fileName, task.fileSize)
-    if (finalStatus?.id) {
-      // 保存文件信息到本地存储
-      saveUploadedFile({
-        fileId: finalStatus.id,
+    // 2. 上传所有分片
+    for (const chunk of chunks) {
+      // 跳过已上传的部分
+      if (chunk.startByte < uploadedBytes) continue
+      
+      const result = await uploadChunk({
+        ...chunk,
         fileName: task.fileName,
         fileSize: task.fileSize,
-        uploadMethod: 'chunk'
+        fileHash: task.fileHash
+      }, (progress) => {
+        fileStore.updateUploadTask(task.id, { progress })
       })
-      fileStore.updateUploadTask(task.id, { progress: 100, status: 'completed' })
-    } else {
-      throw new Error('Upload completed but no file ID returned')
+      
+      // 更新已上传字节数
+      uploadedBytes = result.uploadedBytes
+      console.log(`已上传 ${uploadedBytes}/${task.fileSize} 字节`)
+      
+      // 如果是最后一片且包含文件ID
+      if (chunk.isLastChunk && result.id) {
+        // 保存文件信息到本地存储
+        saveUploadedFile({
+          fileId: result.id,
+          fileName: task.fileName,
+          fileSize: task.fileSize,
+          uploadMethod: 'chunk'
+        })
+        fileStore.updateUploadTask(task.id, { progress: 100, status: 'completed' })
+      }
     }
   } catch (error) {
-    console.error('Chunked upload error:', error)
-    fileStore.updateUploadTask(task.id, { status: 'error', error: error.message })
+    console.error('大文件上传失败:', error)
+    fileStore.updateUploadTask(task.id, { 
+      status: 'error', 
+      error: error.message,
+      // 保存已上传位置以便恢复
+      resumeByte: uploadedBytes 
+    })
     throw error
   }
 }
