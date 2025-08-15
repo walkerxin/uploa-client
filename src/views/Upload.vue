@@ -283,11 +283,24 @@ const uploadSmallFileHandler = async (task) => {
 // 分片上传处理
 const uploadChunkedFileHandler = async (task) => {
   try {
-    // 1. 切片文件
-    const chunks = sliceFile(task.file)
+    // 1. 如果没有文件MD5值，先计算MD5
+    if (!task.fileHash) {
+      fileStore.updateUploadTask(task.id, { status: 'hashing', progress: 0 })
+      const fileHash = await calculateFileHash(task.file, (progress) => {
+        fileStore.updateUploadTask(task.id, { 
+          status: 'hashing', 
+          progress: Math.floor(progress / 2) // 计算哈希占总进度的50%
+        })
+      })
+      fileStore.updateUploadTask(task.id, { fileHash, status: 'uploading', progress: 50 })
+      task.fileHash = fileHash // 更新任务对象中的fileHash
+    }
+    
+    // 2. 切片文件
+    const chunks = sliceFile(task.file, task.chunkSize)
     let uploadedBytes = 0
     
-    // 2. 上传所有分片
+    // 3. 上传所有分片
     for (const chunk of chunks) {
       // 跳过已上传的部分
       if (chunk.startByte < uploadedBytes) continue
@@ -296,9 +309,11 @@ const uploadChunkedFileHandler = async (task) => {
         ...chunk,
         fileName: task.fileName,
         fileSize: task.fileSize,
-        fileHash: task.fileHash
+        fileHash: task.fileHash // 确保传递文件MD5值
       }, (progress) => {
-        fileStore.updateUploadTask(task.id, { progress })
+        // 计算总进度：哈希计算50% + 上传50%
+        const totalProgress = 50 + Math.floor(progress / 2)
+        fileStore.updateUploadTask(task.id, { progress: totalProgress })
       })
       
       // 更新已上传字节数
@@ -391,6 +406,7 @@ const getProgressStatus = (status) => {
   const statusMap = {
     completed: 'success',
     uploading: '',
+    hashing: 'info',
     error: 'exception',
     paused: 'warning'
   }
@@ -401,6 +417,7 @@ const getProgressStatus = (status) => {
 const getProgressText = (task) => {
   const statusMap = {
     waiting: '等待中',
+    hashing: `计算文件特征值 ${task.progress}%`,
     uploading: `上传中 ${task.progress}%`,
     paused: `已暂停 ${task.progress}%`,
     completed: '上传完成',
@@ -573,4 +590,4 @@ const getProgressText = (task) => {
     justify-content: center;
   }
 }
-</style> 
+</style>

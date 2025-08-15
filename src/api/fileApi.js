@@ -91,6 +91,11 @@ export const checkFileExists = async (fileName, fileHash) => {
  */
 export const uploadChunk = async (chunkData, onProgress) => {
   try {
+    // 确保fileHash存在，这是FileMd5参数的值
+    if (!chunkData.fileHash) {
+      throw new Error('缺少文件MD5值，无法上传')
+    }
+    
     const formData = new FormData()
     formData.append('file', new Blob([chunkData.chunk]), chunkData.fileName)
     
@@ -113,6 +118,12 @@ export const uploadChunk = async (chunkData, onProgress) => {
     })
 
     console.log('分片上传响应:', response.data)
+    
+    // 检查响应代码，确保是200才视为成功
+    if (response.data.code !== 200) {
+      throw new Error(`上传失败: ${response.data.message || '服务器返回错误'}`)
+    }
+    
     return {
       ...response.data,
       // 计算已上传字节数
@@ -255,4 +266,4 @@ export const downloadFileRange = async (fileId, fileName, startByte, endByte, on
     console.error('Download file range error:', error)
     throw error
   }
-} 
+}
