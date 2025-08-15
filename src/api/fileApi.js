@@ -14,8 +14,8 @@ export const uploadSmallFile = async (file, onProgress) => {
   try {
     const response = await apiClient.post('/add', formData, {
       headers: {
-        'Content-Type': 'multipart/form-data',
-        'AuthToken': API_CONFIG.token // 确保使用正确的认证头
+        'Content-Type': 'multipart/form-data'
+        // 认证头通过拦截器或代理自动添加
       },
       onUploadProgress: (progressEvent) => {
         const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total)
@@ -93,8 +93,8 @@ export const uploadChunk = async (chunkData, onProgress) => {
   try {
     const response = await apiClient.post('/upload-chunk', formData, {
       headers: {
-        'Content-Type': 'multipart/form-data',
-        'AuthToken': API_CONFIG.token // 确保使用正确的认证头
+        'Content-Type': 'multipart/form-data'
+        // 认证头通过拦截器或代理自动添加
       },
       onUploadProgress: (progressEvent) => {
         const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total)

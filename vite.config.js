@@ -27,6 +27,19 @@ export default defineConfig({
   },
   server: {
     port: 3000,
-    open: true
+    open: true,
+    proxy: {
+      '/api': {
+        target: 'https://test.wukongyun.fun/v1',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+        configure: (proxy, options) => {
+          proxy.on('proxyReq', (proxyReq, req, res) => {
+            // 添加自定义头
+            proxyReq.setHeader('AuthToken', '1b1427d1c3a88c308a0e0b3d61cf337e')
+          })
+        }
+      }
+    }
   }
 })

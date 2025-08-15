@@ -2,7 +2,7 @@ import axios from 'axios'
 
 // API基础配置
 export const API_CONFIG = {
-  baseURL: 'https://test.wukongyun.fun/v1', // 根据实际API地址修改
+  baseURL: import.meta.env.DEV ? '/api' : 'https://test.wukongyun.fun/v1', // 开发环境使用代理
   token: '1b1427d1c3a88c308a0e0b3d61cf337e',
   timeout: 30000,
   chunkSize: 5 * 1024 * 1024, // 5MB 分片大小
@@ -13,7 +13,8 @@ export const apiClient = axios.create({
   baseURL: API_CONFIG.baseURL,
   timeout: API_CONFIG.timeout,
   headers: {
-    'AuthToken': API_CONFIG.token,
+    // 开发环境下通过代理添加认证头，生产环境直接添加
+    ...(import.meta.env.DEV ? {} : { 'Authorization': API_CONFIG.token }),
     'Content-Type': 'application/json'
   }
 })
