@@ -121,7 +121,7 @@ export const mergeChunks = async (fileHash, fileName, totalChunks) => {
  */
 export const getFileList = async (params = {}) => {
   try {
-    const response = await apiClient.get('/files', { params })
+    const response = await apiClient.get('/cat', { params })
     return response.data
   } catch (error) {
     console.error('Get file list error:', error)
