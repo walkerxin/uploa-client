@@ -2,10 +2,10 @@ import axios from 'axios'
 
 // API基础配置
 export const API_CONFIG = {
-  baseURL: 'https://api.halome.cc', // 根据实际API地址修改
+  baseURL: 'https://test.wukongyun.fun/v1', // 根据实际API地址修改
   token: '1b1427d1c3a88c308a0e0b3d61cf337e',
   timeout: 30000,
-  chunkSize: 2 * 1024 * 1024, // 2MB 分片大小
+  chunkSize: 5 * 1024 * 1024, // 5MB 分片大小
 }
 
 // 创建axios实例

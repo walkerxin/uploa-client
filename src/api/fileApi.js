@@ -11,7 +11,7 @@ export const uploadSmallFile = async (file, onProgress) => {
   formData.append('file', file)
   
   try {
-    const response = await apiClient.post('/upload', formData, {
+    const response = await apiClient.post('/add', formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       },
@@ -52,7 +52,7 @@ export const checkFileExists = async (fileName, fileHash) => {
  */
 export const getUploadedChunks = async (fileHash) => {
   try {
-    const response = await apiClient.get('/uploaded-chunks', {
+    const response = await apiClient.get('/addLargeFile', {
       params: { fileHash }
     })
     return response.data

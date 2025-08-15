@@ -120,7 +120,7 @@ export const API_CONFIG = {
 
 ### 小文件上传
 ```http
-POST /upload
+POST /add
 Content-Type: multipart/form-data
 
 file: <文件>
@@ -135,7 +135,7 @@ GET /check-file?fileName=<文件名>&fileHash=<文件哈希>
 
 #### 上传分片
 ```http
-POST /upload-chunk
+POST /addLargeFile
 Content-Type: multipart/form-data
 
 chunk: <分片数据>
