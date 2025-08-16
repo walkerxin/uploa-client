@@ -206,7 +206,7 @@ const fileStore = useFileStore()
 // 响应式数据
 const isDragover = ref(false)
 const uploadMode = ref('auto') // auto, small, chunk
-const chunkSize = ref(2 * 1024 * 1024) // 2MB
+const chunkSize = ref(5 * 1024 * 1024) // 5MB
 const asyncMode = ref(false) // false 同步, true 异步
 const notificationLink = ref('')
 const fileInput = ref(null)
@@ -299,7 +299,9 @@ const getUploadMode = (file) => {
 // 开始上传
 const startUpload = async (task) => {
   try {
-    fileStore.updateUploadTask(task.id, { status: 'uploading' })
+    // 每次开始上传前，为任务创建/更新一个新的 AbortController
+    const controller = new AbortController()
+    fileStore.updateUploadTask(task.id, { status: 'uploading', abortController: controller })
 
     let result
     if (task.uploadMode === 'small') {
@@ -363,6 +365,12 @@ const uploadChunkedFileHandler = async (task) => {
     if (!task.totalChunks || task.totalChunks !== totalChunks) {
       fileStore.updateUploadTask(task.id, { totalChunks })
     }
+    // 使用任务上的 AbortController，如果不存在则创建并保存
+    let controller = task.abortController
+    if (!controller) {
+      controller = new AbortController()
+      fileStore.updateUploadTask(task.id, { abortController: controller })
+    }
     
     // 如果已经全部上传完成
     if (startIndex >= totalSize) {
@@ -379,9 +387,19 @@ const uploadChunkedFileHandler = async (task) => {
         console.log('上传已暂停')
         return { status: 'paused' }
       }
+      // 若当前任务的 AbortController 已被触发（用户点了暂停），也立即跳出
+      if (task.abortController && task.abortController.signal?.aborted) {
+        console.log('检测到Abort信号，停止本轮上传')
+        return { status: 'paused' }
+      }
 
       const endIndex = Math.min(startIndex + chunkSize, totalSize)
+      const expectedSize = endIndex - startIndex
       const chunk = task.file.slice(startIndex, endIndex) // 正确使用file.slice
+      // 断言切片大小是否符合预期
+      if (chunk.size !== expectedSize) {
+        console.warn('[Chunk Size Mismatch] expected:', expectedSize, 'actual:', chunk.size, 'range:', startIndex, endIndex)
+      }
       const isLastChunk = endIndex >= totalSize
 
       console.log(`上传切片: ${startIndex}-${endIndex}, 是否最后一片: ${isLastChunk}`)
@@ -403,7 +421,7 @@ const uploadChunkedFileHandler = async (task) => {
         const currentBytes = startIndex + (chunk.size * chunkProgress / 100)
         const totalProgress = 20 + Math.floor((currentBytes / totalSize) * 80)
         fileStore.updateUploadTask(task.id, { progress: Math.min(totalProgress, 100) })
-      })
+      }, controller.signal)
 
       console.log('切片上传响应:', response)
 
@@ -426,8 +444,8 @@ const uploadChunkedFileHandler = async (task) => {
       const uploadProgress = 20 + Math.floor((task.uploadedBytes || endIndex) / totalSize * 80)
       fileStore.updateUploadTask(task.id, { progress: Math.min(uploadProgress, 100) })
 
-      // 如果是最后一片且上传成功，检查是否有文件ID返回（同步）
-      if (isLastChunk && response.id) {
+      // 若服务端返回了 id（包括早于最后一片返回、或首片即返回，如命中秒传/去重），统一保存并结束
+      if (response.id) {
         console.log('大文件上传完成，文件ID:', response.id)
         
         // 保存文件信息到本地存储
@@ -469,6 +487,12 @@ const uploadChunkedFileHandler = async (task) => {
     return { status: 'partial' }
 
   } catch (error) {
+    // 若是用户触发的暂停（Abort），将其视为正常的 paused，不标记为错误
+    const currentTask = fileStore.uploadList.find(t => t.id === task.id)
+    const isAborted = error?.name === 'CanceledError' || error?.name === 'AbortError' || error?.code === 'ERR_CANCELED'
+    if (currentTask?.status === 'paused' || isAborted) {
+      return { status: 'paused' }
+    }
     console.error('分片上传失败:', error)
     fileStore.updateUploadTask(task.id, { 
       status: 'error', 
@@ -480,6 +504,10 @@ const uploadChunkedFileHandler = async (task) => {
 
 // 暂停上传
 const pauseUpload = (task) => {
+  // 通过 AbortController 取消当前分片请求
+  if (task.abortController) {
+    try { task.abortController.abort() } catch (e) {}
+  }
   fileStore.updateUploadTask(task.id, { status: 'paused' })
 }
 

@@ -83,7 +83,7 @@ export const checkFileExists = async (fileName, fileHash) => {
  * @param {Function} onProgress 进度回调
  * @returns {Promise}
  */
-export const uploadChunk = async (chunkData, onProgress) => {
+export const uploadChunk = async (chunkData, onProgress, abortSignal) => {
   try {
     // 确保fileHash存在，这是FileMd5参数的值
     if (!chunkData.fileHash) {
@@ -94,6 +94,10 @@ export const uploadChunk = async (chunkData, onProgress) => {
     const binaryBody = chunkData.chunk instanceof Blob ? chunkData.chunk : new Blob([chunkData.chunk])
 
     const notificationLink = chunkData.notificationLink || API_CONFIG.notificationLink
+    // 调试：打印本次分片体积与区间
+    try {
+      console.log('[Chunk Debug] startByte:', chunkData.startByte, 'endByte:', chunkData.endByte, 'body.size:', binaryBody?.size)
+    } catch (_) {}
     const response = await apiClient.post('/addLargeFile', binaryBody, {
       headers: {
         'Content-Type': 'application/octet-stream',
@@ -102,8 +106,13 @@ export const uploadChunk = async (chunkData, onProgress) => {
         'FileName': chunkData.fileName,
         'FileMd5': chunkData.fileHash,
         'AuthToken': API_CONFIG.token,
-        ...(notificationLink ? { 'NotificationLink': notificationLink } : {})
+        ...(notificationLink ? { 'NotificationLink': notificationLink } : {}),
+        // 仅用于前端/后端问题定位的调试头，服务端可忽略
+        'X-Debug-Chunk-Size': (Number(chunkData.endByte) - Number(chunkData.startByte)).toString()
       },
+      // 明确不做转换，按原始二进制发送
+      transformRequest: (v) => v,
+      signal: abortSignal,
       onUploadProgress: (progressEvent) => {
         // 回调报告当前分片的进度(0-100)，供上层按“MD5 20% + 上传80%”计算总进度
         const chunkTotal = Number(chunkData.endByte) - Number(chunkData.startByte)
@@ -115,6 +124,14 @@ export const uploadChunk = async (chunkData, onProgress) => {
     })
 
     console.log('分片上传响应:', response.data)
+    // 容错处理：若服务端fileIndex返回超过FileSize（可能表示已全部上传），强制对齐到FileSize
+    const safeFileIndex = (() => {
+      const idx = Number(response.data.fileIndex)
+      const size = Number(chunkData.fileSize)
+      if (!Number.isFinite(idx)) return undefined
+      if (Number.isFinite(size) && idx > size) return size
+      return idx
+    })()
     
     // 检查响应代码，确保是200才视为成功
     if (response.data.code !== 200) {
@@ -123,8 +140,8 @@ export const uploadChunk = async (chunkData, onProgress) => {
     
     return {
       ...response.data,
-      // 计算已上传字节数（优先使用服务端返回的 fileIndex）
-      uploadedBytes: response.data.fileIndex ? parseInt(response.data.fileIndex) : chunkData.endByte
+      // 计算已上传字节数（优先使用服务端返回的 fileIndex），并做上限纠正
+      uploadedBytes: safeFileIndex ?? chunkData.endByte
     }
   } catch (error) {
     console.error('分片上传失败:', error)

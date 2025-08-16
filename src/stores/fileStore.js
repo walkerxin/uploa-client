@@ -15,7 +15,9 @@ export const useFileStore = defineStore('file', () => {
       status: 'waiting', // waiting, uploading, paused, awaiting-callback, completed, error
       progress: 0,
       speed: 0,
-      createTime: Date.now()
+      createTime: Date.now(),
+      // 每个任务独立的中止控制器
+      abortController: null
     })
   }
   

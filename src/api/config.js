@@ -45,6 +45,10 @@ apiClient.interceptors.response.use(
     return response
   },
   error => {
+    // 中断请求（如暂停上传）不作为错误噪声输出
+    if (error?.code === 'ERR_CANCELED' || error?.name === 'CanceledError' || error?.name === 'AbortError') {
+      return Promise.reject(error)
+    }
     console.error('API Response Error:', error.response?.status, error.config?.url)
     return Promise.reject(error)
   }

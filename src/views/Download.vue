@@ -453,7 +453,7 @@ const getFileTypeTag = (fileName) => {
   if (isImageFile(fileName)) return 'success'
   if (isVideoFile(fileName)) return 'warning'
   if (isDocumentFile(fileName)) return 'info'
-  return ''
+  return undefined // 避免传入空字符串
 }
 
 // 获取文件类型文本
