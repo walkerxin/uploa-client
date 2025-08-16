@@ -114,6 +114,9 @@
                 <span class="upload-speed" v-if="task.speed > 0">
                   {{ formatSpeed(task.speed) }}
                 </span>
+                <span class="chunk-meta" v-if="task.uploadMode === 'chunk'">
+                  {{ getChunkMeta(task) }}
+                </span>
               </div>
             </div>
 
@@ -133,6 +136,22 @@
                 @click="retryUpload(task)"
               >
                 重试
+              </el-button>
+              <el-button
+                v-else-if="task.status === 'uploading'"
+                type="warning"
+                size="small"
+                @click="pauseUpload(task)"
+              >
+                暂停
+              </el-button>
+              <el-button
+                v-else-if="task.status === 'paused'"
+                type="success"
+                size="small"
+                @click="resumeUpload(task)"
+              >
+                继续
               </el-button>
             </div>
           </div>
@@ -220,7 +239,9 @@ const handleFiles = (files) => {
       fileSize: file.size,
       file: file,
       uploadMode: getUploadMode(file),
-      chunkSize: chunkSize.value
+      chunkSize: chunkSize.value,
+      totalChunks: Math.max(1, Math.ceil(file.size / chunkSize.value)),
+      uploadedChunks: 0
     })
   })
 
@@ -311,6 +332,10 @@ const uploadChunkedFileHandler = async (task) => {
     const chunkSize = task.chunkSize
     let startIndex = task.uploadedBytes || 0 // 从已上传位置开始（断点续传）
     const totalSize = task.file.size
+    const totalChunks = Math.max(1, Math.ceil(totalSize / chunkSize))
+    if (!task.totalChunks || task.totalChunks !== totalChunks) {
+      fileStore.updateUploadTask(task.id, { totalChunks })
+    }
     
     // 如果已经全部上传完成
     if (startIndex >= totalSize) {
@@ -357,13 +382,15 @@ const uploadChunkedFileHandler = async (task) => {
       if (response.fileIndex !== undefined) {
         const serverIndex = parseInt(response.fileIndex)
         startIndex = serverIndex
-        fileStore.updateUploadTask(task.id, { uploadedBytes: serverIndex })
+        const uploadedChunks = Math.min(totalChunks, Math.ceil(serverIndex / chunkSize))
+        fileStore.updateUploadTask(task.id, { uploadedBytes: serverIndex, uploadedChunks })
         
         console.log(`服务器返回fileIndex: ${serverIndex}，下一个切片从 ${startIndex} 开始`)
       } else {
         // 如果服务器没有返回fileIndex，按本地计算继续
         startIndex = endIndex
-        fileStore.updateUploadTask(task.id, { uploadedBytes: endIndex })
+        const uploadedChunks = Math.min(totalChunks, Math.ceil(endIndex / chunkSize))
+        fileStore.updateUploadTask(task.id, { uploadedBytes: endIndex, uploadedChunks })
       }
 
       // 更新进度
@@ -386,7 +413,8 @@ const uploadChunkedFileHandler = async (task) => {
         fileStore.updateUploadTask(task.id, { 
           status: 'completed', 
           progress: 100,
-          fileId: response.id 
+          fileId: response.id,
+          uploadedChunks: totalChunks
         })
         return { status: 'completed', fileId: response.id }
       }
@@ -491,6 +519,14 @@ const getProgressText = (task) => {
     error: '上传失败'
   }
   return statusMap[task.status] || '未知状态'
+}
+
+// 获取分片元信息文本
+const getChunkMeta = (task) => {
+  const sizeMB = Math.max(1, Math.round((task.chunkSize || 0) / (1024 * 1024)))
+  const total = task.totalChunks || (task.fileSize && task.chunkSize ? Math.max(1, Math.ceil(task.fileSize / task.chunkSize)) : 0)
+  const uploaded = task.uploadedChunks || 0
+  return `分片大小: ${sizeMB}MB | 进度: ${uploaded}/${total}`
 }
 </script>
 
@@ -626,6 +662,11 @@ const getProgressText = (task) => {
   margin-top: 5px;
   font-size: 12px;
   color: #909399;
+}
+
+.chunk-meta {
+  margin-left: 8px;
+  color: #606266;
 }
 
 .upload-actions {
