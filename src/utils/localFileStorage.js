@@ -35,6 +35,8 @@ export const saveUploadedFile = (fileInfo) => {
       uploadTime: Date.now(),
       type: fileInfo.type || 'unknown',
       uploadMethod: fileInfo.uploadMethod || 'unknown', // 'small' or 'chunk'
+      // 记录异步任务标记
+      isAsync: fileInfo.isAsync || false,
       ...fileInfo
     }
     

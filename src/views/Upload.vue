@@ -65,6 +65,25 @@
                 </el-select>
               </el-form-item>
             </el-col>
+            <el-col :span="12">
+              <el-form-item label="异步模式:">
+                <el-switch
+                  v-model="asyncMode"
+                  active-text="异步"
+                  inactive-text="同步"
+                  :disabled="uploadMode === 'small'"
+                />
+              </el-form-item>
+            </el-col>
+            <el-col :span="24">
+              <el-form-item label="回调地址:" v-if="uploadMode !== 'small'">
+                <el-input
+                  v-model="notificationLink"
+                  placeholder="例如：https://your.service.com/upload/callback"
+                  :disabled="!asyncMode"
+                />
+              </el-form-item>
+            </el-col>
           </el-row>
         </div>
       </el-card>
@@ -116,6 +135,9 @@
                 </span>
                 <span class="chunk-meta" v-if="task.uploadMode === 'chunk'">
                   {{ getChunkMeta(task) }}
+                </span>
+                <span class="async-meta" v-if="task.uploadMode === 'chunk'">
+                  {{ getAsyncMeta(task) }}
                 </span>
               </div>
             </div>
@@ -177,6 +199,7 @@ import {
   validateFileSize
 } from '../utils/fileUtils'
 import { saveUploadedFile } from '../utils/localFileStorage.js'
+import { API_CONFIG } from '../api/config.js'
 
 const fileStore = useFileStore()
 
@@ -184,6 +207,8 @@ const fileStore = useFileStore()
 const isDragover = ref(false)
 const uploadMode = ref('auto') // auto, small, chunk
 const chunkSize = ref(2 * 1024 * 1024) // 2MB
+const asyncMode = ref(false) // false 同步, true 异步
+const notificationLink = ref('')
 const fileInput = ref(null)
 
 // 计算属性
@@ -241,7 +266,9 @@ const handleFiles = (files) => {
       uploadMode: getUploadMode(file),
       chunkSize: chunkSize.value,
       totalChunks: Math.max(1, Math.ceil(file.size / chunkSize.value)),
-      uploadedChunks: 0
+      uploadedChunks: 0,
+      asyncMode: asyncMode.value,
+      notificationLink: asyncMode.value ? (notificationLink.value || '') : ''
     })
   })
 
@@ -366,7 +393,9 @@ const uploadChunkedFileHandler = async (task) => {
         fileName: task.fileName,
         fileSize: totalSize,
         fileHash: task.fileHash,
-        isLastChunk: isLastChunk
+        isLastChunk: isLastChunk,
+        // 异步模式：为最后一片或所有分片都附带 NotificationLink 均可，这里所有分片统一附带
+        notificationLink: task.asyncMode ? (task.notificationLink || API_CONFIG.notificationLink || undefined) : undefined
       }
 
       const response = await uploadChunk(chunkData, (chunkProgress) => {
@@ -397,7 +426,7 @@ const uploadChunkedFileHandler = async (task) => {
       const uploadProgress = 20 + Math.floor((task.uploadedBytes || endIndex) / totalSize * 80)
       fileStore.updateUploadTask(task.id, { progress: Math.min(uploadProgress, 100) })
 
-      // 如果是最后一片且上传成功，检查是否有文件ID返回
+      // 如果是最后一片且上传成功，检查是否有文件ID返回（同步）
       if (isLastChunk && response.id) {
         console.log('大文件上传完成，文件ID:', response.id)
         
@@ -417,6 +446,16 @@ const uploadChunkedFileHandler = async (task) => {
           uploadedChunks: totalChunks
         })
         return { status: 'completed', fileId: response.id }
+      }
+
+      // 如果是最后一片且启用了异步模式，但本次未返回 id，则标记为等待异步回执
+      if (isLastChunk && task.asyncMode && !response.id) {
+        fileStore.updateUploadTask(task.id, {
+          status: 'awaiting-callback',
+          progress: 100,
+          uploadedChunks: totalChunks
+        })
+        return { status: 'awaiting-callback' }
       }
     }
 
@@ -498,14 +537,12 @@ const getFileIconClass = (fileName) => {
 
 // 获取进度条状态
 const getProgressStatus = (status) => {
-  const statusMap = {
-    completed: 'success',
-    uploading: '',
-    hashing: 'info',
-    error: 'exception',
-    paused: 'warning'
-  }
-  return statusMap[status] || ''
+  // ElProgress 的 status 仅允许 '', 'success', 'exception', 'warning'
+  if (status === 'completed') return 'success'
+  if (status === 'error') return 'exception'
+  if (status === 'paused') return 'warning'
+  // 其他状态（hashing、awaiting-callback、uploading等）一律返回空串，避免传入不被支持的 'info'
+  return ''
 }
 
 // 获取进度文本
@@ -515,6 +552,7 @@ const getProgressText = (task) => {
     hashing: `计算文件特征值 ${task.progress}%`,
     uploading: `上传中 ${task.progress}%`,
     paused: `已暂停 ${task.progress}%`,
+    'awaiting-callback': '等待异步回执',
     completed: '上传完成',
     error: '上传失败'
   }
@@ -527,6 +565,12 @@ const getChunkMeta = (task) => {
   const total = task.totalChunks || (task.fileSize && task.chunkSize ? Math.max(1, Math.ceil(task.fileSize / task.chunkSize)) : 0)
   const uploaded = task.uploadedChunks || 0
   return `分片大小: ${sizeMB}MB | 进度: ${uploaded}/${total}`
+}
+
+// 同步/异步显示
+const getAsyncMeta = (task) => {
+  if (task.uploadMode !== 'chunk') return ''
+  return task.asyncMode ? '模式: 异步' : '模式: 同步'
 }
 </script>
 

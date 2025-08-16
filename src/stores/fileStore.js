@@ -12,7 +12,7 @@ export const useFileStore = defineStore('file', () => {
     uploadList.value.push({
       id: Date.now() + Math.random(),
       ...task,
-      status: 'waiting', // waiting, uploading, paused, completed, error
+      status: 'waiting', // waiting, uploading, paused, awaiting-callback, completed, error
       progress: 0,
       speed: 0,
       createTime: Date.now()
