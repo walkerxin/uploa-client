@@ -44,7 +44,7 @@
       <!-- 底部 -->
       <el-footer class="app-footer">
         <div class="footer-content">
-          <p>&copy; 2024 文件上传下载客户端 - 基于 Halome API</p>
+          <p>&copy; 2025 文件上传下载客户端 - 基于 Halome API</p>
         </div>
       </el-footer>
     </el-container>
