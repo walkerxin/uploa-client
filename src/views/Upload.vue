@@ -157,6 +157,7 @@ import {
   validateFileType,
   validateFileSize
 } from '../utils/fileUtils'
+import { saveUploadedFile } from '../utils/localFileStorage.js'
 
 const fileStore = useFileStore()
 
@@ -306,7 +307,8 @@ const uploadChunkedFileHandler = async (task) => {
     }
 
     fileStore.updateUploadTask(task.id, { status: 'uploading' })
-    const chunkSize = task.chunkSize * 1024 * 1024 // 转换为字节
+    // 任务中已存的是字节数，这里不再重复 *1024*1024
+    const chunkSize = task.chunkSize
     let startIndex = task.uploadedBytes || 0 // 从已上传位置开始（断点续传）
     const totalSize = task.file.size
     

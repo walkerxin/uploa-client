@@ -93,6 +93,7 @@ export const uploadChunk = async (chunkData, onProgress) => {
     // 直接发送分片二进制数据作为请求体（符合接口：Body 为 arraybuff）
     const binaryBody = chunkData.chunk instanceof Blob ? chunkData.chunk : new Blob([chunkData.chunk])
 
+    const notificationLink = chunkData.notificationLink || API_CONFIG.notificationLink
     const response = await apiClient.post('/addLargeFile', binaryBody, {
       headers: {
         'Content-Type': 'application/octet-stream',
@@ -100,9 +101,8 @@ export const uploadChunk = async (chunkData, onProgress) => {
         'FileSize': chunkData.fileSize.toString(),
         'FileName': chunkData.fileName,
         'FileMd5': chunkData.fileHash,
-        'AuthToken': API_CONFIG.token
-        // 仅当明确提供异步通知链接时才添加
-        // ...(chunkData.notificationLink ? { 'NotificationLink': chunkData.notificationLink } : {})
+        'AuthToken': API_CONFIG.token,
+        ...(notificationLink ? { 'NotificationLink': notificationLink } : {})
       },
       onUploadProgress: (progressEvent) => {
         // 回调报告当前分片的进度(0-100)，供上层按“MD5 20% + 上传80%”计算总进度
