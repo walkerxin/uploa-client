@@ -198,7 +198,7 @@ import {
   validateFileType,
   validateFileSize
 } from '../utils/fileUtils'
-import { saveUploadedFile } from '../utils/localFileStorage.js'
+import { saveUploadedFile, getUploadedFiles } from '../utils/localFileStorage.js'
 import { API_CONFIG } from '../api/config.js'
 
 const fileStore = useFileStore()
@@ -350,7 +350,8 @@ const uploadChunkedFileHandler = async (task) => {
           status: 'hashing', 
           progress: Math.floor(progress * 0.2) 
         })
-      })
+      }, task.chunkSize)
+      console.log('Calculated MD5 for', task.fileName, ':', fileHash)
       
       fileStore.updateUploadTask(task.id, { fileHash })
       task.fileHash = fileHash // 同步更新本地任务对象
@@ -415,6 +416,7 @@ const uploadChunkedFileHandler = async (task) => {
         // 异步模式：为最后一片或所有分片都附带 NotificationLink 均可，这里所有分片统一附带
         notificationLink: task.asyncMode ? (task.notificationLink || API_CONFIG.notificationLink || undefined) : undefined
       }
+      console.log('Uploading chunk with FileMd5:', chunkData.fileHash)
 
       const response = await uploadChunk(chunkData, (chunkProgress) => {
         // 计算总进度：MD5占20% + 当前上传进度占80%
@@ -444,26 +446,52 @@ const uploadChunkedFileHandler = async (task) => {
       const uploadProgress = 20 + Math.floor((task.uploadedBytes || endIndex) / totalSize * 80)
       fileStore.updateUploadTask(task.id, { progress: Math.min(uploadProgress, 100) })
 
-      // 若服务端返回了 id（包括早于最后一片返回、或首片即返回，如命中秒传/去重），统一保存并结束
+      // 若服务端返回了 id（包括早于最后一片返回的命中秒传/去重场景）
       if (response.id) {
-        console.log('大文件上传完成，文件ID:', response.id)
-        
-        // 保存文件信息到本地存储
-        saveUploadedFile({
-          fileId: response.id,
-          fileName: task.fileName,
-          fileSize: task.fileSize,
-          type: task.file.type || 'application/octet-stream',
-          uploadMethod: 'chunk'
-        })
-        
-        fileStore.updateUploadTask(task.id, { 
-          status: 'completed', 
-          progress: 100,
-          fileId: response.id,
-          uploadedChunks: totalChunks
-        })
-        return { status: 'completed', fileId: response.id }
+        if (!isLastChunk) {
+          // 早于最后一片返回 id，视为已上传过（不可重复上传）
+          ElMessage.warning('该文件已上传过，不可重复上传')
+          // 将 id 与本地列表进行对比，不存在则加入
+          try {
+            const files = getUploadedFiles()
+            const exists = Array.isArray(files) && files.some(f => f.id === response.id)
+            if (!exists) {
+              saveUploadedFile({
+                fileId: response.id,
+                fileName: task.fileName,
+                fileSize: task.fileSize,
+                type: task.file.type || 'application/octet-stream',
+                uploadMethod: 'chunk'
+              })
+            }
+          } catch (e) {
+            console.warn('本地存储比对/写入失败:', e)
+          }
+          fileStore.updateUploadTask(task.id, {
+            status: 'duplicate',
+            progress: 100,
+            fileId: response.id,
+            uploadedChunks: totalChunks
+          })
+          return { status: 'duplicate', fileId: response.id }
+        } else {
+          // 正常最后一片返回 id，按完成逻辑处理
+          console.log('大文件上传完成，文件ID:', response.id)
+          saveUploadedFile({
+            fileId: response.id,
+            fileName: task.fileName,
+            fileSize: task.fileSize,
+            type: task.file.type || 'application/octet-stream',
+            uploadMethod: 'chunk'
+          })
+          fileStore.updateUploadTask(task.id, {
+            status: 'completed',
+            progress: 100,
+            fileId: response.id,
+            uploadedChunks: totalChunks
+          })
+          return { status: 'completed', fileId: response.id }
+        }
       }
 
       // 如果是最后一片且启用了异步模式，但本次未返回 id，则标记为等待异步回执
@@ -568,7 +596,7 @@ const getProgressStatus = (status) => {
   // ElProgress 的 status 仅允许 '', 'success', 'exception', 'warning'
   if (status === 'completed') return 'success'
   if (status === 'error') return 'exception'
-  if (status === 'paused') return 'warning'
+  if (status === 'paused' || status === 'duplicate') return 'warning'
   // 其他状态（hashing、awaiting-callback、uploading等）一律返回空串，避免传入不被支持的 'info'
   return ''
 }
@@ -581,6 +609,7 @@ const getProgressText = (task) => {
     uploading: `上传中 ${task.progress}%`,
     paused: `已暂停 ${task.progress}%`,
     'awaiting-callback': '等待异步回执',
+    duplicate: '该文件已上传过',
     completed: '上传完成',
     error: '上传失败'
   }

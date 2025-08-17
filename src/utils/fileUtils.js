@@ -28,11 +28,12 @@ export const formatSpeed = (bytesPerSecond) => {
  * 计算文件MD5哈希值
  * @param {File} file 文件对象
  * @param {Function} onProgress 进度回调
+ * @param {number} [hashChunkSize=5*1024*1024] 计算MD5时使用的分片大小（字节），与上传分片保持一致
  * @returns {Promise<string>} MD5值
  */
-export const calculateFileHash = (file, onProgress) => {
+export const calculateFileHash = (file, onProgress, hashChunkSize = 5 * 1024 * 1024) => {
   return new Promise((resolve, reject) => {
-    const chunkSize = 2 * 1024 * 1024 // 2MB
+    const chunkSize = Math.max(256 * 1024, Number(hashChunkSize) || (5 * 1024 * 1024))
     const chunks = Math.ceil(file.size / chunkSize)
     let currentChunk = 0
     const spark = new SparkMD5.ArrayBuffer()
