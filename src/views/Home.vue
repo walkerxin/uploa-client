@@ -38,7 +38,7 @@
               type="success"
               size="large"
               @click="$router.push('/download')"
-              class="action-btn"
+              class="action-btn" style="margin-left:0"
             >
               <el-icon><Download /></el-icon>
               文件下载

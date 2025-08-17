@@ -43,7 +43,10 @@ export const uploadSmallFile = async (file, onProgress) => {
           fileName: file.name,
           fileSize: file.size,
           type: file.type,
-          uploadMethod: 'small'
+          uploadMethod: 'small',
+          chunkSize: null,
+          totalChunks: 1,
+          isAsync: false
         })
       } else {
         console.error('Upload failed or no fileId returned')
@@ -249,6 +252,30 @@ export const downloadFile = async (fileId, fileName, onProgress) => {
     return response.data
   } catch (error) {
     console.error('Download file error:', error)
+    throw error
+  }
+}
+
+/**
+ * 获取文件 Blob（用于预览等场景，不触发浏览器下载）
+ * @param {string} fileId 文件ID
+ * @param {Function} onProgress 进度回调
+ * @returns {Promise<Blob>}
+ */
+export const getFileBlob = async (fileId, onProgress) => {
+  try {
+    const response = await apiClient.get(`/cat?id=${fileId}`, {
+      responseType: 'blob',
+      onDownloadProgress: (progressEvent) => {
+        if (progressEvent.total) {
+          const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+          onProgress?.(progress)
+        }
+      }
+    })
+    return response.data
+  } catch (error) {
+    console.error('Get file blob error:', error)
     throw error
   }
 }

@@ -461,7 +461,10 @@ const uploadChunkedFileHandler = async (task) => {
                 fileName: task.fileName,
                 fileSize: task.fileSize,
                 type: task.file.type || 'application/octet-stream',
-                uploadMethod: 'chunk'
+                uploadMethod: 'chunk',
+                chunkSize: task.chunkSize,
+                totalChunks: totalChunks,
+                isAsync: !!task.asyncMode
               })
             }
           } catch (e) {
@@ -482,7 +485,10 @@ const uploadChunkedFileHandler = async (task) => {
             fileName: task.fileName,
             fileSize: task.fileSize,
             type: task.file.type || 'application/octet-stream',
-            uploadMethod: 'chunk'
+            uploadMethod: 'chunk',
+            chunkSize: task.chunkSize,
+            totalChunks: totalChunks,
+            isAsync: !!task.asyncMode
           })
           fileStore.updateUploadTask(task.id, {
             status: 'completed',

@@ -64,6 +64,23 @@
                   <el-tag size="small" :type="getFileTypeTag(file.name)">
                     {{ getFileTypeText(file.name) }}
                   </el-tag>
+                  <el-tag v-if="file.uploadMethod === 'chunk'" size="small" type="info">
+                    大文件(分片)
+                  </el-tag>
+                  <el-tag v-else-if="file.uploadMethod === 'small'" size="small" type="info">
+                    小文件
+                  </el-tag>
+                  <template v-if="file.uploadMethod === 'chunk'">
+                    <el-tag size="small" type="success">
+                      分片: {{ getChunkCount(file) }}
+                    </el-tag>
+                    <el-tag size="small" type="warning">
+                      分片大小: {{ getChunkSizeMB(file) }}MB
+                    </el-tag>
+                    <el-tag size="small" type="default" v-if="file.isAsync === true">
+                      异步合并
+                    </el-tag>
+                  </template>
                 </div>
               </div>
             </div>
@@ -206,7 +223,8 @@
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useFileStore } from '../stores/fileStore'
-import { getFileList, downloadFile as downloadFileApi } from '../api/fileApi'
+import { getFileList, downloadFile as downloadFileApi, getFileBlob } from '../api/fileApi'
+import { API_CONFIG } from '../api/config.js'
 import {
   formatFileSize,
   formatSpeed,
@@ -252,6 +270,23 @@ const paginatedFileList = computed(() => {
   const end = start + pageSize.value
   return filteredFileList.value.slice(start, end)
 })
+
+// 计算分片数：优先使用文件记录中的 totalChunks；否则用 chunkSize 或默认配置估算
+const getChunkCount = (file) => {
+  if (!file || file.uploadMethod !== 'chunk') return ''
+  if (Number.isFinite(file.totalChunks)) return file.totalChunks
+  const size = Number(file.size) || 0
+  const chunkSize = Number(file.chunkSize) || Number(API_CONFIG?.chunkSize) || (5 * 1024 * 1024)
+  if (size <= 0 || chunkSize <= 0) return ''
+  return Math.max(1, Math.ceil(size / chunkSize))
+}
+
+// 显示分片大小（MB）：优先使用文件记录中的 chunkSize；否则使用默认配置
+const getChunkSizeMB = (file) => {
+  if (!file || file.uploadMethod !== 'chunk') return ''
+  const chunkSize = Number(file.chunkSize) || Number(API_CONFIG?.chunkSize) || (5 * 1024 * 1024)
+  return Math.max(1, Math.round(chunkSize / (1024 * 1024)))
+}
 
 // 刷新文件列表
 const refreshFileList = async () => {
@@ -350,11 +385,10 @@ const previewFile = async (file) => {
   
   try {
     if (isImageFile(file.name)) {
-      // 模拟图片预览
-      previewFileData.value = {
-        type: 'image',
-        url: 'https://via.placeholder.com/400x300?text=Demo+Image'
-      }
+      // 真实从后端获取图片 Blob 并预览
+      const blob = await getFileBlob(file.id)
+      const url = URL.createObjectURL(blob)
+      previewFileData.value = { type: 'image', url }
     } else if (file.name.endsWith('.txt')) {
       // 模拟文本预览
       previewFileData.value = {
@@ -377,6 +411,11 @@ const previewFile = async (file) => {
 // 关闭预览
 const closePreview = () => {
   previewDialogVisible.value = false
+  try {
+    if (previewFileData.value?.type === 'image' && previewFileData.value?.url) {
+      URL.revokeObjectURL(previewFileData.value.url)
+    }
+  } catch (e) {}
   previewFileData.value = {}
 }
 
